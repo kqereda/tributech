@@ -72,6 +72,67 @@ class TribuFaq extends Module
         ];
     }
 
+    public function getContent()
+    {
+        $output = '';
+        if (Tools::isSubmit('submit' . $this->name)) {
+            $configValue = (string) Tools::getValue('MYMODULE_CONFIG');
+            if (empty($configValue) || !Validate::isGenericName($configValue)) {
+                $output = $this->displayError($this->l('Invalid Configuration value'));
+            } else {
+                Configuration::updateValue('MYMODULE_CONFIG', $configValue);
+                $output = $this->displayConfirmation($this->l('Settings updated'));
+            }
+        }
+        return $output . $this->displayForm();
+    }
+
+    /**
+     * Builds the configuration form
+     * @return string HTML code
+     */
+    public function displayForm()
+    {
+        // Init Fields form array
+        $form = [
+            'form' => [
+                'legend' => [
+                    'title' => $this->l('Configuration'),
+                ],
+                'input' => [
+                    [
+                        'type' => 'text',
+                        'label' => $this->l('Nombre de questions à afficher'),
+                        'name' => 'MYMODULE_CONFIG',
+                        'size' => 20,
+                        'required' => true,
+                    ],
+                ],
+                'submit' => [
+                    'title' => $this->l('Save'),
+                    'class' => 'btn btn-default pull-right',
+                ],
+            ],
+        ];
+
+        $helper = new HelperForm();
+
+        // Module, token and currentIndex
+        $helper->table = $this->table;
+        $helper->name_controller = $this->name;
+        $helper->token = Tools::getAdminTokenLite('AdminModules');
+        $helper->currentIndex = AdminController::$currentIndex . '&' . http_build_query(['configure' => $this->name]);
+        $helper->submit_action = 'submit' . $this->name;
+
+        // Default language
+        $helper->default_form_language = (int) Configuration::get('PS_LANG_DEFAULT');
+
+        // Load current value into the form
+        $helper->fields_value['MYMODULE_CONFIG'] = Tools::getValue('MYMODULE_CONFIG', Configuration::get('MYMODULE_CONFIG'));
+
+        return $helper->generateForm([$form]);
+    }
+
     public function install()
     {
         return (
@@ -117,7 +178,7 @@ class TribuFaq extends Module
 
     public function hookDisplayHome()
     {
-        $faqToShowNumber = 5;
+        $faqToShowNumber = Configuration::get('MYMODULE_CONFIG');
 
         function getLastFaq($number)
         {
@@ -125,42 +186,27 @@ class TribuFaq extends Module
             $query->from('tribufaq_question', 'faq');
             $query->select('*');
             $query->leftJoin('tribufaq_question_lang', 'faql', 'faq.id_tribufaq_question = faql.id_tribufaq_question AND faql.id_lang=' . Context::getContext()->language->id);
+            $query->leftJoin('tribufaq_category_lang', 'faqcl', 'faq.id_tribufaq_category = faqcl.id_tribufaq_category AND faqcl.id_lang=' . Context::getContext()->language->id);
             $query->where('faq.active = 1');
             $query->orderBy('date_add DESC');
             $query->limit((int)$number);
             return Db::getInstance()->executeS($query);
         }
 
-        function getFaqCategories()
-        {
-            $query = new DbQuery();
-            $query->from('tribufaq_category', 'faq');
-            $query->select('*');
-            $query->leftJoin('tribufaq_category_lang', 'faql', 'faq.id_tribufaq_category = faql.id_tribufaq_category AND faql.id_lang=' . Context::getContext()->language->id);
-            $query->where('faq.active = 1');
-            return Db::getInstance()->executeS($query);
-        }
-
-        $categories = getFaqCategories();
-
-        function groupFaq($array, $key, $categories) {
-            $return = array();
-            foreach($array as $val) {
-                $categoryName = '';
-                if($categories):
-                    foreach($categories as $category) {
-                        if($category['id_tribufaq_category'] === $val['id_tribufaq_category']){
-                            $categoryName = $category['name'];
-                        }
-                    }
-                endif;
-                $return[$val[$key]][] = $val;
+        function groupFaq($key, $data) {
+            $result = array();
+            foreach($data as $val) {
+                if(array_key_exists($key, $val)){
+                    $result[$val[$key]][] = $val;
+                }else{
+                    $result[""][] = $val;
+                }
             }
-            return $return;
+            return $result;
         }
 
         $faqs = getLastFaq($faqToShowNumber);
-        $orderedFaqs = groupFaq($faqs, 'id_tribufaq_category', $categories);
+        $orderedFaqs = groupFaq('name', $faqs);
 
         $this->context->smarty->assign('faqs', $orderedFaqs);
         return $this->display(__FILE__,'displayHome.tpl');

@@ -116,11 +116,12 @@ class AdminTribufaqQuestionController extends ModuleAdminController
                 ],
 
                 [
-                    'type' => 'text',
+                    'type' => 'textarea',
                     'label' => $this->module->l('Réponse'),
                     'name' => 'response',
                     'lang' => true,
                     'required' => true,
+                    'validation' => 'isCleanHtml'
                 ],
 
                 [
